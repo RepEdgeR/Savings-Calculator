@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Solar Savings Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #eef2f7;
+    --surface: #ffffff;
+    --ink: #15233c;
+    --muted: #5d6e87;
+    --faint: #8a99ad;
+    --line: #e2e8f1;
+    --line-soft: #eef2f7;
+    --gold: #d8941f;
+    --gold-soft: #fbf1dc;
+    --esc: #3a5ba8;     /* escalator PPA */
+    --flat: #1f8f7f;    /* flat PPA */
+    --util: #c0492f;    /* stay with utility */
+    --shadow: 0 1px 2px rgba(21,35,60,.04), 0 8px 24px rgba(21,35,60,.06);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 64px; }
+
+  header.top { margin-bottom: 22px; }
+  .kicker {
+    font-family: "Space Grotesk", sans-serif; font-size: 12px; font-weight: 600;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--gold); margin: 0 0 6px;
+  }
+  h1 {
+    font-family: "Space Grotesk", sans-serif; font-size: clamp(26px, 4vw, 38px);
+    font-weight: 700; letter-spacing: -.02em; margin: 0 0 6px; line-height: 1.05;
+  }
+  .sub { color: var(--muted); margin: 0; max-width: 64ch; }
+
+  .grid { display: grid; grid-template-columns: 332px 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+
+  .inputs { padding: 20px; position: sticky; top: 16px; }
+  @media (max-width: 900px) { .inputs { position: static; } }
+  .group + .group { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line-soft); }
+  .group-title {
+    font-family: "Space Grotesk", sans-serif; font-size: 12px; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin: 0 0 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .group-title .dot { width: 9px; height: 9px; border-radius: 3px; }
+  .field { margin-bottom: 13px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+  .input-shell { position: relative; display: flex; align-items: center; }
+  .input-shell .pre, .input-shell .post { position: absolute; color: var(--faint); font-size: 14px; pointer-events: none; }
+  .input-shell .pre { left: 12px; }
+  .input-shell .post { right: 12px; }
+  input[type="number"] {
+    width: 100%; font-family: "Space Grotesk", sans-serif; font-size: 15px; font-weight: 500;
+    color: var(--ink); background: #fbfcfe; border: 1px solid var(--line);
+    border-radius: 9px; padding: 10px 12px; outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  input.has-pre { padding-left: 24px; }
+  input.has-post { padding-right: 38px; }
+  input[type="number"]:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .util-presets { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .pbtn {
+    font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 12px; color: var(--muted);
+    border: 1px solid var(--line); background: var(--surface); padding: 6px 11px; border-radius: 999px; cursor: pointer; transition: all .15s;
+  }
+  .pbtn:hover { border-color: var(--gold); color: var(--ink); }
+  .pbtn.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+  .results { display: flex; flex-direction: column; gap: 22px; }
+  .headline { padding: 22px 24px; }
+  .hl-label {
+    font-family: "Space Grotesk", sans-serif; font-size: 12px; font-weight: 600;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--faint); margin: 0 0 8px;
+  }
+  .headline h2 {
+    font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: clamp(19px, 2.4vw, 25px);
+    margin: 0; line-height: 1.25; letter-spacing: -.01em;
+  }
+  .headline h2 .num { color: var(--gold); }
+  .headline .s:where(.x){}
+
+  .crossbar { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 560px) { .crossbar { grid-template-columns: 1fr; } }
+  .crosscard { padding: 16px 18px; }
+  .crosscard .ct { font-size: 12px; color: var(--muted); margin: 0 0 6px; line-height: 1.35; }
+  .crosscard .cv { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 22px; letter-spacing: -.01em; }
+  .crosscard .cv small { font-weight: 500; font-size: 13px; color: var(--faint); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 14px; }
+  .opt { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 16px 18px; position: relative; box-shadow: var(--shadow); }
+  .opt .tag { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .opt .dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .opt .name { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.2; }
+  .opt .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 9px; }
+  .opt .row .k { font-size: 12px; color: var(--muted); }
+  .opt .row .v { font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 14px; }
+  .opt .big { margin-top: 2px; }
+  .opt .big .v { font-size: 23px; font-weight: 700; letter-spacing: -.01em; }
+  .opt.best { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), var(--shadow); }
+  .opt .badge {
+    position: absolute; top: -10px; right: 12px; background: var(--gold); color: #fff;
+    font-family: "Space Grotesk", sans-serif; font-size: 10.5px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px;
+  }
+
+  .chart-card { padding: 20px 22px 22px; }
+  .chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+  .chart-title { font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 16px; margin: 0; }
+  .chart-note { color: var(--faint); font-size: 12.5px; margin: 3px 0 0; }
+  .seg { display: inline-flex; background: var(--line-soft); border-radius: 999px; padding: 3px; }
+  .seg button {
+    font-family: "Inter", sans-serif; font-size: 12.5px; font-weight: 600; color: var(--muted);
+    border: none; background: transparent; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: all .15s;
+  }
+  .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(21,35,60,.12); }
+  .chart-box { position: relative; height: 360px; margin-top: 12px; }
+
+  .legend { display: flex; gap: 18px; margin-top: 14px; flex-wrap: wrap; }
+  .legend .li { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+  .legend .sw { width: 14px; height: 3px; border-radius: 2px; }
+
+  .dlbtn {
+    font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 12.5px; color: var(--muted);
+    border: 1px solid var(--line); background: var(--surface); padding: 6px 13px; border-radius: 999px; cursor: pointer; transition: all .15s;
+  }
+  .dlbtn:hover { border-color: var(--gold); color: var(--ink); }
+  .dl-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .sheet-card { padding: 18px 0 10px; }
+  .sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 0 22px 14px; }
+  .sheet-scroll { overflow-x: auto; }
+  table.sheet { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.sheet th, table.sheet td { padding: 7px 16px; text-align: right; white-space: nowrap; }
+  table.sheet th:first-child, table.sheet td:first-child { text-align: left; position: sticky; left: 0; }
+  table.sheet td:first-child { background: #f3f6fa; font-weight: 600; color: var(--muted); }
+  table.sheet thead th:first-child { background: #eef2f7; }
+  table.sheet thead th { font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 12px; color: var(--muted); border-bottom: 2px solid var(--line); }
+  table.sheet tbody td { font-family: "Space Grotesk", sans-serif; color: var(--ink); border-bottom: 1px solid var(--line-soft); }
+  table.sheet tbody tr.cross td { background: var(--gold-soft); }
+  table.sheet tbody tr.total td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: none; background: var(--gold-soft); }
+
+  .foot { color: var(--faint); font-size: 12.5px; line-height: 1.6; padding: 18px 22px; }
+  .foot b { color: var(--muted); font-weight: 600; }
+  .disclaimer { color: var(--faint); font-size: 11.5px; line-height: 1.55; padding: 13px 22px 2px; border-top: 1px solid var(--line-soft); }
+  .disclaimer b { color: var(--muted); font-weight: 600; }
+
+  .rate-history { margin: 4px 22px 2px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+  .rate-history .rh-head { background: var(--gold-soft); padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .rate-history .rh-head h3 { font-family: "Space Grotesk", sans-serif; font-size: 13px; font-weight: 600; letter-spacing: .03em; color: #8a6516; margin: 0; }
+  .rate-history .rh-head p { font-size: 12px; color: var(--muted); margin: 5px 0 0; line-height: 1.5; max-width: 70ch; }
+  .rate-history .rh-row { display: flex; align-items: baseline; gap: 10px 12px; padding: 11px 16px; border-bottom: 1px solid var(--line-soft); flex-wrap: wrap; }
+  .rate-history .rh-name { font-weight: 600; color: var(--ink); font-size: 13.5px; min-width: 58px; }
+  .rate-history .rh-stat { color: var(--muted); font-size: 13px; flex: 1; min-width: 190px; line-height: 1.5; }
+  .rate-history .rh-stat b { color: var(--util); font-weight: 600; }
+  .rate-history .rh-src { font-size: 11.5px; color: var(--faint); }
+  .rate-history .rh-src a { color: var(--esc); text-decoration: none; }
+  .rate-history .rh-src a:hover { text-decoration: underline; }
+  .rate-history .rh-note { font-size: 11.5px; color: var(--faint); padding: 11px 16px; line-height: 1.55; background: #fbfcfe; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <p class="kicker">PPA Comparison</p>
+    <h1>Solar Savings Calculator</h1>
+    <p class="sub">Compare a flat-rate PPA and an escalator PPA against staying with the utility — lifetime cost, savings, and the year the escalator's lower starting rate stops being the lower rate.</p>
+  </header>
+
+  <div class="grid">
+
+    <!-- INPUTS -->
+    <aside class="card inputs">
+      <div class="group">
+        <p class="group-title">System</p>
+        <div class="field">
+          <label for="prod">Annual production</label>
+          <div class="input-shell">
+            <input class="has-post" type="number" id="prod" step="100" value="9000" />
+            <span class="post">kWh</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="term">Agreement length</label>
+          <div class="input-shell">
+            <input class="has-post" type="number" id="term" step="1" value="25" />
+            <span class="post">yrs</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <p class="group-title"><span class="dot" style="background:var(--util)"></span>Stay with utility</p>
+        <div class="util-presets" id="presets">
+          <button type="button" class="pbtn" data-r="0.47" data-i="4.5">SDG&amp;E</button>
+          <button type="button" class="pbtn" data-r="0.36" data-i="4">SCE</button>
+          <button type="button" class="pbtn" data-r="0.42" data-i="4.5">PG&amp;E</button>
+        </div>
+        <div class="field">
+          <label for="util">Utility rate per kWh (today)</label>
+          <div class="input-shell">
+            <span class="pre">$</span>
+            <input class="has-pre" type="number" id="util" step="0.01" value="0.47" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="incr">Annual rate increase</label>
+          <div class="input-shell">
+            <span class="post">%</span>
+            <input class="has-post" type="number" id="incr" step="0.1" value="4.5" />
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <p class="group-title"><span class="dot" style="background:var(--flat)"></span>Flat-rate PPA</p>
+        <div class="field">
+          <label for="flat">Rate per kWh (fixed for the whole term)</label>
+          <div class="input-shell">
+            <span class="pre">$</span>
+            <input class="has-pre" type="number" id="flat" step="0.01" value="0.36" />
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <p class="group-title"><span class="dot" style="background:var(--esc)"></span>Escalator PPA</p>
+        <div class="field">
+          <label for="escRate">Starting rate per kWh</label>
+          <div class="input-shell">
+            <span class="pre">$</span>
+            <input class="has-pre" type="number" id="escRate" step="0.01" value="0.26" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="esc">Annual escalator</label>
+          <div class="input-shell">
+            <span class="post">%</span>
+            <input class="has-post" type="number" id="esc" step="0.1" value="3.5" />
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RESULTS -->
+    <main class="results">
+
+      <section class="card headline">
+        <p class="hl-label">Lower lifetime cost</p>
+        <h2 id="headline">—</h2>
+      </section>
+
+      <div class="crossbar">
+        <section class="card crosscard">
+          <p class="ct">Year the escalator's <b>yearly payment</b> passes the flat rate</p>
+          <div class="cv" id="annCross">—</div>
+        </section>
+        <section class="card crosscard">
+          <p class="ct">Year <b>total paid</b> under the escalator passes the flat rate</p>
+          <div class="cv" id="cumCross">—</div>
+        </section>
+      </div>
+
+      <section class="cards" id="cards"></section>
+
+      <section class="card chart-card">
+        <div class="chart-head">
+          <div>
+            <p class="chart-title" id="chartTitle">Total paid over time</p>
+            <p class="chart-note" id="chartNote"></p>
+          </div>
+          <div class="seg" id="viewSeg">
+            <button data-v="cum" class="on">Total paid</button>
+            <button data-v="ann">Yearly payment</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="chart"></canvas></div>
+        <div class="legend">
+          <span class="li"><span class="sw" style="background:var(--util)"></span>Stay with utility</span>
+          <span class="li"><span class="sw" style="background:var(--flat)"></span>Flat-rate PPA</span>
+          <span class="li"><span class="sw" style="background:var(--esc)"></span>Escalator PPA</span>
+          <span class="li"><span class="sw" style="background:var(--muted)"></span>Flat↔escalator crossover</span>
+        </div>
+      </section>
+
+      <section class="card sheet-card">
+        <div class="sheet-head">
+          <p class="chart-title">Year by year</p>
+          <div class="dl-group">
+            <button class="dlbtn" id="dlx">Download Excel</button>
+            <button class="dlbtn" id="dl">Download CSV</button>
+          </div>
+        </div>
+        <div class="sheet-scroll"><table class="sheet" id="sheet"></table></div>
+      </section>
+
+      <div class="foot" id="foot"></div>
+
+      <div class="rate-history">
+        <div class="rh-head">
+          <h3>Rate history &mdash; what these utilities actually charged</h3>
+          <p>You choose the future rate-increase above. For context, here is the published history.</p>
+        </div>
+        <div class="rh-row">
+          <span class="rh-name">PG&amp;E</span>
+          <span class="rh-stat">Residential rates rose <b>~101% over 10 years</b> (2015&ndash;2025) &mdash; about 7% per year.</span>
+          <span class="rh-src">Source: <a href="https://www.publicadvocates.cpuc.ca.gov/press-room/commentary/250423-pge-seeks-another-multi-billion-dollar-rate-increase" target="_blank" rel="noopener">CPUC Public Advocates Office</a></span>
+        </div>
+        <div class="rh-row">
+          <span class="rh-name">SCE</span>
+          <span class="rh-stat">Residential rates rose <b>~83% over 10 years</b> &mdash; about 6% per year.</span>
+          <span class="rh-src">Source: <a href="https://www.ocpower.org/newsroom/sce-rate-changes-explained/" target="_blank" rel="noopener">CPUC Public Advocates Office data</a></span>
+        </div>
+        <div class="rh-row">
+          <span class="rh-name">SDG&amp;E</span>
+          <span class="rh-stat">Rates rose <b>~41% from 2017&ndash;2022</b> (about 7% per year), remain the highest in the U.S., and have seen double-digit hikes recently.</span>
+          <span class="rh-src">Sources: <a href="https://revel-energy.com/customer-electricity-costs-case-study-san-diego-gas-electric-sdge/" target="_blank" rel="noopener">Revel Energy</a>, <a href="https://voiceofsandiego.org/2023/08/29/san-diegos-eye-popping-electricity-rates-get-national-notoriety/" target="_blank" rel="noopener">Voice of San Diego</a></span>
+        </div>
+        <p class="rh-note">Past increases never guarantee future ones &mdash; set the projection rate where you can defend it. Figures are rounded; full detail is in the linked sources.</p>
+      </div>
+
+      <p class="disclaimer"><b>Estimate only.</b> This tool is for illustration and is not a quote, an offer, or a guarantee of savings. Results are projections based on the values entered — actual costs depend on real utility rates and future rate increases, system production, and the terms of any signed agreement, all of which may differ. Nothing here is financial advice. Confirm against a recent utility bill and the actual contract before making a decision.</p>
+
+    </main>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const num = id => { const v = parseFloat($(id).value); return isNaN(v) ? 0 : v; };
+  const money = v => "$" + Math.round(v).toLocaleString("en-US");
+  const money2 = v => "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const getCss = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+  let chartView = "cum";
+  let chart;
+
+  function compute() {
+    const X = num("prod");
+    const years = Math.max(1, Math.round(num("term")));
+    const Pf = num("flat");
+    const Pe = num("escRate");
+    const g = num("esc") / 100;
+    const Ru = num("util");
+    const incr = num("incr") / 100;
+
+    const annFlat = [], annEsc = [], annUtil = [], cumFlat = [], cumEsc = [], cumUtil = [];
+    let cf = 0, ce = 0, cu = 0;
+    for (let i = 1; i <= years; i++) {
+      const f = X * Pf;
+      const e = X * Pe * Math.pow(1 + g, i - 1);
+      const u = X * Ru * Math.pow(1 + incr, i - 1);
+      annFlat.push(f); annEsc.push(e); annUtil.push(u);
+      cf += f; ce += e; cu += u;
+      cumFlat.push(cf); cumEsc.push(ce); cumUtil.push(cu);
+    }
+    let annCross = null, cumCross = null;
+    for (let i = 0; i < years; i++) { if (annEsc[i] >= annFlat[i]) { annCross = i + 1; break; } }
+    for (let i = 0; i < years; i++) { if (cumEsc[i] >= cumFlat[i]) { cumCross = i + 1; break; } }
+
+    return {
+      X, years, Pf, Pe, g, Ru, incr,
+      annFlat, annEsc, annUtil, cumFlat, cumEsc, cumUtil,
+      totalFlat: cf, totalEsc: ce, totalUtil: cu,
+      saveFlat: cu - cf, saveEsc: cu - ce,
+      annCross, cumCross,
+      yr1Flat: annFlat[0], yr1Esc: annEsc[0], yr1Util: annUtil[0],
+      lastFlat: annFlat[years - 1], lastEsc: annEsc[years - 1], lastUtil: annUtil[years - 1],
+      effFlat: Pf, effEsc: (X > 0 ? ce / (X * years) : 0), effUtil: (X > 0 ? cu / (X * years) : 0)
+    };
+  }
+
+  // vertical dashed crossover marker
+  const crossPlugin = {
+    id: "cross",
+    afterDatasetsDraw(c) {
+      const opt = c.config.options.plugins.cross;
+      if (!opt || opt.idx == null) return;
+      const meta = c.getDatasetMeta(0);
+      const pt = meta.data[opt.idx];
+      if (!pt) return;
+      const ctx = c.ctx, x = pt.x, yT = c.scales.y.top, yB = c.scales.y.bottom;
+      ctx.save();
+      ctx.strokeStyle = "rgba(93,110,135,.55)";
+      ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, yT); ctx.lineTo(x, yB); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#15233c";
+      ctx.font = '600 11px "Space Grotesk", sans-serif';
+      ctx.textAlign = x > (c.chartArea.left + c.chartArea.right) / 2 ? "right" : "left";
+      ctx.fillText("Year " + opt.label, x + (ctx.textAlign === "right" ? -6 : 6), yT + 12);
+      ctx.restore();
+    }
+  };
+  Chart.register(crossPlugin);
+
+  function draw(r) {
+    const labels = r.annFlat.map((_, i) => i + 1);
+    const isCum = chartView === "cum";
+    const flatData = isCum ? r.cumFlat : r.annFlat;
+    const escData = isCum ? r.cumEsc : r.annEsc;
+    const utilData = isCum ? r.cumUtil : r.annUtil;
+    const crossYr = isCum ? r.cumCross : r.annCross;
+
+    const data = {
+      labels,
+      datasets: [
+        { label: "Stay with utility", data: utilData, borderColor: getCss("--util"), backgroundColor: "transparent", borderWidth: 2.5, borderDash: [6, 4], pointRadius: 0, tension: .08 },
+        { label: "Flat-rate PPA", data: flatData, borderColor: getCss("--flat"), backgroundColor: "transparent", borderWidth: 2.5, pointRadius: 0, tension: .08 },
+        { label: "Escalator PPA", data: escData, borderColor: getCss("--esc"), backgroundColor: "transparent", borderWidth: 2.5, pointRadius: 0, tension: .08 }
+      ]
+    };
+    const opts = {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        cross: { idx: crossYr ? crossYr - 1 : null, label: crossYr || "" },
+        tooltip: {
+          backgroundColor: "#15233c", padding: 11, cornerRadius: 8, titleFont: { family: "Space Grotesk" },
+          callbacks: {
+            title: items => "Year " + items[0].label,
+            label: ctx => ctx.dataset.label + ": " + money(ctx.parsed.y)
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, title: { display: true, text: "Year", color: getCss("--faint"), font: { size: 11 } }, ticks: { color: getCss("--muted"), maxTicksLimit: 13 } },
+        y: {
+          grid: { color: getCss("--line-soft") }, border: { display: false },
+          ticks: { color: getCss("--muted"), callback: v => v >= 1000 ? "$" + (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + "k" : "$" + v }
+        }
+      }
+    };
+    if (chart) { chart.data = data; chart.options = opts; chart.update(); }
+    else chart = new Chart($("chart"), { type: "line", data, options: opts });
+  }
+
+  function render() {
+    const r = compute();
+    const escCheaper = r.totalEsc < r.totalFlat;
+    const ppaDiff = Math.abs(r.totalEsc - r.totalFlat);
+    const bestKey = escCheaper ? "esc" : "flat";
+    const bestName = escCheaper ? "escalator PPA" : "flat-rate PPA";
+    const bestSave = escCheaper ? r.saveEsc : r.saveFlat;
+
+    // headline — lead with the cheaper PPA's savings vs the utility
+    const hEl = $("headline");
+    if (bestSave <= 0) {
+      hEl.innerHTML = `Neither PPA beats staying with the utility over ${r.years} years at these rates.`;
+    } else {
+      const ppaClause = Math.round(ppaDiff) >= 1 ? `, and <span class="num">${money(ppaDiff)}</span> vs the other PPA` : ``;
+      hEl.innerHTML = `The ${bestName} is the lowest-cost choice — saving <span class="num">${money(bestSave)}</span> vs the utility${ppaClause} over ${r.years} years.`;
+    }
+
+    // crossover cards (flat vs escalator)
+    $("annCross").innerHTML = r.annCross
+      ? `Year ${r.annCross}`
+      : `Never <small>within ${r.years} yrs</small>`;
+    $("cumCross").innerHTML = r.cumCross
+      ? `Year ${r.cumCross}`
+      : `Never <small>within ${r.years} yrs</small>`;
+
+    // option cards
+    const cardsEl = $("cards");
+    cardsEl.innerHTML = "";
+    const opts = [
+      { key: "util", name: "Stay with utility", color: getCss("--util"), total: r.totalUtil, yr1: r.yr1Util, last: r.lastUtil, eff: r.effUtil, save: null },
+      { key: "flat", name: "Flat-rate PPA", color: getCss("--flat"), total: r.totalFlat, yr1: r.yr1Flat, last: r.lastFlat, eff: r.effFlat, save: r.saveFlat },
+      { key: "esc", name: "Escalator PPA", color: getCss("--esc"), total: r.totalEsc, yr1: r.yr1Esc, last: r.lastEsc, eff: r.effEsc, save: r.saveEsc }
+    ];
+    opts.forEach(o => {
+      const best = o.key === bestKey && bestSave > 0;
+      let saveRow;
+      if (o.key === "util") {
+        saveRow = `<div class="row"><span class="k">vs utility</span><span class="v" style="color:var(--faint)">baseline</span></div>`;
+      } else {
+        const pos = o.save >= 0;
+        saveRow = `<div class="row"><span class="k">Saves vs utility</span><span class="v" style="color:${pos ? 'var(--flat)' : 'var(--util)'}">${pos ? '' : '−'}${money(Math.abs(o.save))}</span></div>`;
+      }
+      const div = document.createElement("div");
+      div.className = "opt" + (best ? " best" : "");
+      div.innerHTML =
+        `${best ? '<span class="badge">Lowest cost</span>' : ''}` +
+        `<div class="tag"><span class="dot" style="background:${o.color}"></span><span class="name">${o.name}</span></div>` +
+        `<div class="row big"><span class="k">${r.years}-year total</span><span class="v">${money(o.total)}</span></div>` +
+        saveRow +
+        `<div class="row"><span class="k">Year 1 payment</span><span class="v">${money(o.yr1)}</span></div>` +
+        `<div class="row"><span class="k">Year ${r.years} payment</span><span class="v">${money(o.last)}</span></div>` +
+        `<div class="row"><span class="k">Effective rate / kWh</span><span class="v">${money2(o.eff)}</span></div>`;
+      cardsEl.appendChild(div);
+    });
+
+    // chart copy
+    $("chartTitle").textContent = chartView === "cum" ? "Total paid over time" : "Yearly payment over time";
+    $("chartNote").textContent = chartView === "cum"
+      ? "Cumulative dollars paid, year by year."
+      : "What you pay in each single year.";
+    draw(r);
+
+    // table
+    buildSheet(r);
+
+    // footnote
+    $("foot").innerHTML =
+      `<b>How it works.</b> All three paths bill the same yearly production (${r.X.toLocaleString()} kWh). The flat PPA holds ${money2(r.Pf)}/kWh for all ${r.years} years. The escalator PPA starts at ${money2(r.Pe)}/kWh and rises ${(r.g * 100).toFixed(1)}% each year. Staying with the utility starts at ${money2(r.Ru)}/kWh and rises ${(r.incr * 100).toFixed(1)}% a year — savings are measured against that path. ` +
+      `"Effective rate" is each option's total divided by total kWh — the single flat price that would cost the same. Production is held flat (no panel degradation). These are list inputs; confirm against the actual contract and a real utility bill.`;
+  }
+
+  function buildSheet(r) {
+    let head = `<thead><tr><th>Year</th><th>Utility — yr</th><th>Flat — yr</th><th>Escalator — yr</th><th>Utility — total</th><th>Flat — total</th><th>Escalator — total</th></tr></thead>`;
+    let rows = "";
+    for (let i = 0; i < r.years; i++) {
+      const isCross = r.cumCross && (i + 1) === r.cumCross;
+      rows += `<tr class="${isCross ? 'cross' : ''}"><td>${i + 1}</td><td>${money(r.annUtil[i])}</td><td>${money(r.annFlat[i])}</td><td>${money(r.annEsc[i])}</td><td>${money(r.cumUtil[i])}</td><td>${money(r.cumFlat[i])}</td><td>${money(r.cumEsc[i])}</td></tr>`;
+    }
+    rows += `<tr class="total"><td>Total</td><td>—</td><td>—</td><td>—</td><td>${money(r.totalUtil)}</td><td>${money(r.totalFlat)}</td><td>${money(r.totalEsc)}</td></tr>`;
+    $("sheet").innerHTML = head + "<tbody>" + rows + "</tbody>";
+  }
+
+  function downloadCsv() {
+    const r = compute();
+    let out = "Year,Utility yearly,Flat yearly,Escalator yearly,Utility total,Flat total,Escalator total\n";
+    for (let i = 0; i < r.years; i++) {
+      out += [i + 1, Math.round(r.annUtil[i]), Math.round(r.annFlat[i]), Math.round(r.annEsc[i]), Math.round(r.cumUtil[i]), Math.round(r.cumFlat[i]), Math.round(r.cumEsc[i])].join(",") + "\n";
+    }
+    out += ["Total", "", "", "", Math.round(r.totalUtil), Math.round(r.totalFlat), Math.round(r.totalEsc)].join(",") + "\n";
+    const blob = new Blob([out], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "solar-savings-calculator.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function downloadXlsx() {
+    if (typeof XLSX === "undefined") { downloadCsv(); return; }
+    const r = compute();
+    const aoa = [["Year", "Utility yearly", "Flat yearly", "Escalator yearly", "Utility total", "Flat total", "Escalator total"]];
+    for (let i = 0; i < r.years; i++) {
+      aoa.push([i + 1, Math.round(r.annUtil[i]), Math.round(r.annFlat[i]), Math.round(r.annEsc[i]), Math.round(r.cumUtil[i]), Math.round(r.cumFlat[i]), Math.round(r.cumEsc[i])]);
+    }
+    aoa.push(["Total", null, null, null, Math.round(r.totalUtil), Math.round(r.totalFlat), Math.round(r.totalEsc)]);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [{ wch: 6 }, { wch: 15 }, { wch: 14 }, { wch: 16 }, { wch: 15 }, { wch: 14 }, { wch: 16 }];
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    for (let R = 1; R <= range.e.r; R++) {
+      for (let C = 1; C <= 6; C++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+        if (cell && typeof cell.v === "number") cell.z = '"$"#,##0';
+      }
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Solar Savings");
+    XLSX.writeFile(wb, "solar-savings-calculator.xlsx");
+  }
+
+  // wiring
+  ["prod", "term", "flat", "escRate", "esc", "util", "incr"].forEach(id => $(id).addEventListener("input", render));
+  ["util", "incr"].forEach(id => $(id).addEventListener("input", () => {
+    document.querySelectorAll("#presets button").forEach(b => b.classList.remove("active"));
+  }));
+  $("presets").addEventListener("click", e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    $("util").value = btn.dataset.r;
+    $("incr").value = btn.dataset.i;
+    document.querySelectorAll("#presets button").forEach(b => b.classList.toggle("active", b === btn));
+    render();
+  });
+  $("viewSeg").addEventListener("click", e => {
+    const btn = e.target.closest("button"); if (!btn) return;
+    chartView = btn.dataset.v;
+    document.querySelectorAll("#viewSeg button").forEach(b => b.classList.toggle("on", b === btn));
+    render();
+  });
+  $("dl").addEventListener("click", downloadCsv);
+  $("dlx").addEventListener("click", downloadXlsx);
+
+  // SDG&E preset now matches the default rate/increase
+  document.querySelector('#presets button[data-r="0.47"]').classList.add("active");
+  render();
+</script>
+</body>
+</html>
